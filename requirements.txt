@@ -1,3 +1,2 @@
-python
 langchain_community
 google.generativeai
