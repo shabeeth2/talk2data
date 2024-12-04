@@ -142,7 +142,7 @@ def main():
     st.header("AIWA - Conversational Insights - Talk 2 data")
 
     # Widget to provide questions
-    user_question = st.text_input("Ask me a question about Insurance database")
+    user_question = st.text_input("Ask me a question about Insurance database that contains Policy, Customer, Agent, Quote, Sales, Claims, Address etc")
 
     if st.button("Submit"):
         with st.spinner("Fetching..."):
