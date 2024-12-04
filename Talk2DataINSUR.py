@@ -175,9 +175,9 @@ def main():
             answer = second_llm_call(llm = llm, sql_response=query_results,user_question = user_question)
             
             st.write(answer)
-            st.write(sql_query)
-            st.write(query_results)
-            st.success("Done")
+            #st.write(sql_query)
+            #st.write(query_results)
+            #st.success("Done")
 
 if __name__ == "__main__":
     main()
