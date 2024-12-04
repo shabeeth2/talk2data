@@ -128,7 +128,7 @@ def get_gemini_llm():
 def second_llm_call(llm, sql_response,user_question):
     model = genai.GenerativeModel('gemini-1.5-flash')
     secondprompt = [f"""Based on the sql response, write an answer relating to the user question:
-                {user_question} , don't show any error messages, if sql response is empty, please respond a polite user friendly message'
+                {user_question} , don't show any error messages, if sql response is empty, please respond any polite user friendly message'
             SQL response:""",  ]                
     # Generate SQL query
     finalanswer = model.generate_content([secondprompt[0], sql_response])
