@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Sat Nov 16 20:08:52 2024
+
 @author: ravivarman.balaiyan
 """
 #from langchain.chains import LLMChain
@@ -70,6 +71,7 @@ def build_few_shots_prompt(db):
             3. **Generate Efficient SQL Queries**:
                 - Prioritize performance by using SQL best practices, such as minimizing subqueries where JOINs suffice and using indexed columns effectively.
                 - Write queries that avoid unnecessary complexity and optimize for readability.
+                - if the question is around your schema, please return a sql to fetch your table names and columns names of all tables
 
             4. **Edge Case Handling**:
                 - Anticipate potential edge cases, such as null values, empty results, or large datasets.
@@ -80,6 +82,7 @@ def build_few_shots_prompt(db):
                 - Remove three single quotes (```) in beginning or end of the sql query.
                 - Also remove the word 'sql' in the beginning of the sql.
                 - In the SQL response ONLY give the SQL, don't respond the question along with the SQL, I want ONLY sql, NOTHING ELSE ALONG WITH THAT'
+                - Give only ONE SQL QUERY, DO NOT GIVE MULTIPLE SQL QUERIES
  
             You can order the results by a relevant column to return the most interesting examples in the database.
             Never query for all the columns from a specific table, only ask for the relevant columns given the question.
@@ -172,8 +175,8 @@ def main():
             answer = second_llm_call(llm = llm, sql_response=query_results,user_question = user_question)
             
             st.write(answer)
-            #st.write(sql_query)
-            #st.write(query_results)
+            st.write(sql_query)
+            st.write(query_results)
             st.success("Done")
 
 if __name__ == "__main__":
