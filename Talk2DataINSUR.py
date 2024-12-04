@@ -12,7 +12,6 @@ import google.generativeai as genai
 #from langchain_core.prompts import PromptTemplate
 #from langchain_core.output_parsers import StrOutputParser
 
-
 load_dotenv()
 google_api_key = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=google_api_key)
