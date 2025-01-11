@@ -1,2 +1,2 @@
-langchain_community
-google.generativeai
+langchain-community
+google-generativeai
