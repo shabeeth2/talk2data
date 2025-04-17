@@ -14,11 +14,19 @@ import google.generativeai as genai
 #from langchain_core.prompts import PromptTemplate
 #from langchain_core.output_parsers import StrOutputParser
 
+import google.generativeai as genai
+#from langchain_core.prompts import PromptTemplate
+#from langchain_core.output_parsers import StrOutputParser
+
 load_dotenv()
 google_api_key = os.getenv("GOOGLE_API_KEY")
-genai.configure(api_key=google_api_key)
+# genai.configure(api_key=google_api_key)
+# model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+from google import genai
+model_id = "gemini-1.5-flash"
 
-model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+client = genai.Client(api_key=google_api_key)
+
 
 def initialize_db_connection():
     # Connect to the SQL database
@@ -121,7 +129,9 @@ def generate_sql_query(prompt, user_question):
     #model = genai.GenerativeModel('gemini-1.5-flash')
     # Generate SQL query
     
-    sql_query = model.generate_content(prompt[0] + user_question)
+    sql_query =  client.models.generate_content(
+model=model_id,
+contents=prompt[0] + user_question)
 
     return sql_query.text
 
@@ -137,11 +147,17 @@ def run_query(db, sql_query):
 def second_llm_call(sql_response,user_question):
     #model = genai.GenerativeModel('gemini-1.5-flash')
     secondprompt = [f"""Based on the sql response, write an answer relating to the user question:
-                {user_question} , don't show any error messages, if sql response is empty, please respond any polite user friendly message
+                {user_question} ,respond with context of users prompt, don't show any error messages, if sql response is empty, please respond any polite user friendly message
             SQL response:""",  ]                
     # Generate SQL query
-    finalanswer = model.generate_content([secondprompt[0], sql_response])
+    finalanswer =  client.models.generate_content(model=model_id,contents=[secondprompt[0], sql_response])
     return finalanswer.text
+
+def third_llm_call_for_vizualition(sql_response,user_question):
+    #viazualization
+    #model = genai.GenerativeModel('gemini-1.5-flash')
+    third
+   
 
     
 import streamlit as st
@@ -179,17 +195,36 @@ def main():
             # Generate few shots prompt
             few_shots_prompt = build_few_shots_prompt(db, chat_history)
 
+            
             # Generate SQL query
             sql_query = generate_sql_query(prompt=few_shots_prompt, user_question = user_question)
 
-            # Execute SQL query
-            sql_query = sql_query.strip()
-            if sql_query != "I don't know":
-                query_results = run_query(db = db, sql_query = sql_query)
-                if query_results is None:
-                    query_results = "No result found in database"                    
-            else:
-                query_results = "No result found in database"
+            with st.status("Querying database", expanded=True) as status:
+                sql_query = sql_query.strip()
+
+                if sql_query != "I don't know":
+                    query_results = run_query(db = db, sql_query = sql_query)
+                
+                
+                    if query_results is None:
+                        query_results = "No result found in database"                    
+                else:
+                    query_results = "No result found in database"
+                time.sleep(1)
+                st.code(sql_query, language="sql")
+                time.sleep(1)
+                status.update(label="View SQL Query!", state="complete", expanded=False)
+
+            # sql_query = generate_sql_query(prompt=few_shots_prompt, user_question = user_question)
+
+            # # Execute SQL query
+            # sql_query = sql_query.strip()
+            # if sql_query != "I don't know":
+            #     query_results = run_query(db = db, sql_query = sql_query)
+            #     if query_results is None:
+            #         query_results = "No result found in database"                    
+            # else:
+            #     query_results = "No result found in database"
                 
             # LLM
             #llm = get_gemini_llm()
