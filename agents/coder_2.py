@@ -15,13 +15,13 @@ def gemini_response(prompt):
         response = client.models.generate_content(
                 model=model_id,
                 contents=prompt,
-                # config = types.GenerateContentConfig(
-                #     tools=[types.Tool(
-                #         code_execution=types.ToolCodeExecution
-                #         )]
-                #     )
+                config = types.GenerateContentConfig(
+                    tools=[types.Tool(
+                        code_execution=types.ToolCodeExecution
+                        )]
+                    )
                 )
-        return response.text
+        return response.executable_code
 
 
 def get_code_response(query_results, user_question):
@@ -129,8 +129,8 @@ st.chat_message("assistant").pyplot(fig)
     
 
         # print(response.code_execution_result)
-    text = gemini_response(prompt_code)
-    code = re.search(r"```python\n(.*?)```", text, re.DOTALL).group(1).strip() if re.search(r"```python\n(.*?)```", text, re.DOTALL) else text.strip()
+    code = gemini_response(prompt_code)
+    # code = re.search(r"```python\n(.*?)```", text, re.DOTALL).group(1).strip() if re.search(r"```python\n(.*?)```", text, re.DOTALL) else text.strip()
         
     return code
         

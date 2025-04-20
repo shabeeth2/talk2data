@@ -11,5 +11,6 @@ response = client.models.generate_content(
     model="gemini-2.0-flash",
     contents="Explain how AI works",
 )
-t=client.models.generate_content(,model=model_id,contents=)
-print(response.con)
+# t=client.models.generate_content(model=,contents=)
+
+print(response.text)

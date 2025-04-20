@@ -10,7 +10,10 @@ from langchain_community.utilities.sql_database import SQLDatabase
 from dotenv import load_dotenv
 import os
 import time
+import pandas as pd
+import matplotlib.pyplot as plt
 import google.generativeai as genai
+from agents.coder import get_code_response
 #from langchain_core.prompts import PromptTemplate
 #from langchain_core.output_parsers import StrOutputParser
 
@@ -130,8 +133,8 @@ def generate_sql_query(prompt, user_question):
     # Generate SQL query
     
     sql_query =  client.models.generate_content(
-model=model_id,
-contents=prompt[0] + user_question)
+                                                model=model_id,
+                                                contents=prompt[0] + user_question)
 
     return sql_query.text
 
@@ -153,11 +156,10 @@ def second_llm_call(sql_response,user_question):
     finalanswer =  client.models.generate_content(model=model_id,contents=[secondprompt[0], sql_response])
     return finalanswer.text
 
-def third_llm_call_for_vizualition(sql_response,user_question):
-    #viazualization
-    #model = genai.GenerativeModel('gemini-1.5-flash')
-    third
-   
+
+# Streamlit app to interact with the SQL database
+
+ 
 
     
 import streamlit as st
@@ -180,7 +182,37 @@ def main():
                 st.write(message["content"])
     # Widget to provide questions
     user_question = st.chat_input("Ask me a question about Insurance database that contains Policy, Customer, Agent, Quote, Sales, Claims, Address etc",key="user_input")
+    # Add a toggle for visualization
+    if "visualization_enabled" not in st.session_state:
+        st.session_state.visualization_enabled = True
+        
 
+    # Function to update visualization toggle
+    def update_visualization(enabled):
+        st.session_state.visualization_enabled = enabled
+
+    # Modify the existing UI to include the toggle
+    visualization_toggle = st.toggle(
+        "Enable Visualization",
+        key="visualization_toggle",
+        value=st.session_state.visualization_enabled
+    )
+
+    # Update the toggle state when changed
+    if visualization_toggle != st.session_state.visualization_enabled:
+        update_visualization(visualization_toggle)
+
+    # ... (rest of the existing code)
+
+    # Function to handle visualization
+
+    def third_llm_call_for_visualition(sql_response, user_question):
+        if st.session_state.visualization_enabled:
+            
+            return get_code_response(sql_response, user_question)
+        else:
+            return "Visualization disabled."
+        
     if user_question is not None:
         with st.chat_message("user"):
             st.write(user_question)
@@ -228,19 +260,47 @@ def main():
                 
             # LLM
             #llm = get_gemini_llm()
-
+            answer=""
             # Final answer
-            answer = second_llm_call(query_results, user_question)
+            if st.session_state.visualization_enabled:
+                visualization_code = third_llm_call_for_visualition(query_results, user_question)
+
+                # Show loading message in chat
+                with st.chat_message("assistant"):
+                    st.write("Generating visualization...")
+
+                # Run the visualization code outside the chat context to avoid nesting
+                try:
+                    with st.container():
+                        st.markdown(
+                            "<div style='max-height:500px; overflow-y:auto;'>",
+                            unsafe_allow_html=True
+                        )
+                        exec(visualization_code)
+                        st.markdown("</div>", unsafe_allow_html=True)
+                        #SIZE
+                        fig = plt.gcf()
+                        fig.set_size_inches(8, 4)
+                        
+                        
+                          # Close the figure to avoid display issues
+                except Exception as e:
+                    st.error(f"Error generating visualization: {e}")
+                    answer = "There was an error generating the visualization."
+                    
+            else:
+                answer = second_llm_call(query_results, user_question)
 
 
-            with st.chat_message("assistant"):
-                response_placeholder = st.empty()
-                full_response = ""
-                for chunk in answer.split():
-                    full_response += chunk + " "
-                    time.sleep(0.05)
-                    response_placeholder.markdown(full_response + "▌")
-                response_placeholder.markdown(full_response)
+            if answer:
+                with st.chat_message("assistant"):
+                    response_placeholder = st.empty()
+                    full_response = ""
+                    for chunk in answer.split():
+                        full_response += chunk + " "
+                        time.sleep(0.05)
+                        response_placeholder.markdown(full_response + "▌")
+                    response_placeholder.markdown(full_response)
 
             
             st.session_state.chat_history.append({"role": "assistant", "content": answer})
