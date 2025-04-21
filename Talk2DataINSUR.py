@@ -266,27 +266,31 @@ def main():
                 visualization_code = third_llm_call_for_visualition(query_results, user_question)
 
                 # Show loading message in chat
-                with st.chat_message("assistant"):
-                    st.write("Generating visualization...")
+                with st.status("Generating visualization...", expanded=False) as status:
+                    with st.chat_message("assistant"):
+                        st.markdown("Generating visualization...")
+                        response_placeholder = st.empty()
+                        
 
-                # Run the visualization code outside the chat context to avoid nesting
-                try:
-                    with st.container():
-                        st.markdown(
-                            "<div style='max-height:500px; overflow-y:auto;'>",
-                            unsafe_allow_html=True
-                        )
-                        exec(visualization_code)
-                        st.markdown("</div>", unsafe_allow_html=True)
-                        #SIZE
-                        fig = plt.gcf()
-                        fig.set_size_inches(8, 4)
-                        
-                        
-                          # Close the figure to avoid display issues
-                except Exception as e:
-                    st.error(f"Error generating visualization: {e}")
-                    answer = "There was an error generating the visualization."
+                    # Run the visualization code outside the chat context to avoid nesting
+                    try:
+                        with st.container():
+                            st.markdown(
+                                "<div style='max-height:500px; overflow-y:auto;'>",
+                                unsafe_allow_html=True
+                            )
+                            exec(visualization_code)
+                            st.markdown("</div>", unsafe_allow_html=True)
+                            #SIZE
+                            fig = plt.gcf()
+                            fig.set_size_inches(8, 4)
+                            
+                            
+                            # Close the figure to avoid display issues
+                    except Exception as e:
+                        st.error(f"Error generating visualization: {e}")
+                        answer = "There was an error generating the visualization."
+                status.update(label="View Visualization!", state="complete", expanded=True)
                     
             else:
                 answer = second_llm_call(query_results, user_question)

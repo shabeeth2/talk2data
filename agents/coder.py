@@ -50,6 +50,7 @@ Your task:
    - Define `df` using pd.DataFrame with data provided
    - Use `st.chat_message("assistant").write(...)` to describe the chart
    - Render the chart using the correct Streamlit chart element
+   - Include a follow-up message with MANY insights AS possible using `st.chat_message("assistant").write(...)`
 
 Restrictions:
 - Do NOT include any import statements
@@ -62,13 +63,14 @@ Restrictions:
 ### Examples (Format Only)
 
 1. Bar Chart:
-```python
 df = pd.DataFrame({{
     'insurance_type': ['Health', 'Auto', 'Home', 'Life'],
     'claims': [320, 450, 210, 150]
 }})
 st.chat_message("assistant").write("Here are the claims per insurance type:")
 st.bar_chart(df.set_index("insurance_type"))
+st.chat_message("assistant").write("🔍 Insights:\n- Auto insurance has the highest number of claims.\n- Life insurance has the fewest claims.")
+
 
 2. Line Chart:
 df = pd.DataFrame({{
@@ -77,6 +79,8 @@ df = pd.DataFrame({{
 }})
 st.chat_message("assistant").write("Here’s the monthly premium collection trend:")
 st.line_chart(df.set_index("month"))
+st.chat_message("assistant").write("🔍 Insights:\n- Premiums steadily increased from Jan to Apr.\n- Highest premium collection occurred in April.")
+
 
 
 3. Scatter Plot:
@@ -86,14 +90,19 @@ df = pd.DataFrame({{
 }})
 st.chat_message("assistant").write("Scatter plot of age vs claim amount:")
 st.scatter_chart(df)
+st.chat_message("assistant").write("🔍 Insights:\n- Claim amounts generally increase with age up to 35.\n- Slight dip after age 40 indicates a peak around age 35.")
+
 
 4. Map:
 df = pd.DataFrame({{
     'lat': [37.7749, 34.0522, 40.7128],
-    'lon': [-122.4194, -118.2437, -74.0060]
+    'lon': [-122.4194, -118.2437, -74.0060],
+    'city': ['San Francisco', 'Los Angeles', 'New York']
 }})
 st.chat_message("assistant").write("Here are the locations of insurance claims:")
 st.map(df)
+st.chat_message("assistant").write("🔍 Insights:\n- Claims are distributed across major metropolitan areas.\n- Could indicate high population density impact.")
+
 
 5. area_chart:
 df = pd.DataFrame({{
@@ -102,6 +111,7 @@ df = pd.DataFrame({{
 }})
 st.chat_message("assistant").write("Here’s the area chart for monthly claims:")
 st.area_chart(df.set_index("month"))
+st.chat_message("assistant").write("🔍 Insights:\n- Claims show a rising trend with some fluctuation in March.\n- April had the highest claims volume.")
 
 6.custom chart:
 df = pd.DataFrame({{
