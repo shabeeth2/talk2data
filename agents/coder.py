@@ -8,7 +8,7 @@ google_api_key = os.getenv("GOOGLE_API_KEY")
 # genai.configure(api_key=google_api_key)
 # model = genai.GenerativeModel(model_name="gemini-1.5-flash")
 from google import genai
-model_id = "gemini-1.5-flash"
+model_id = "gemini-2.0-flash"
 
 client = genai.Client(api_key=google_api_key)
 def gemini_response(prompt):
@@ -40,6 +40,15 @@ Your objective is to:
    - Display an appropriate chart
    - Provide a written interpretation of the data
    - Surface as many meaningful insights as possible
+   
+chart types:
+- Use `st.bar_chart()` for bar charts
+- Use `st.line_chart()` for line charts
+- Use `st.area_chart()` for area charts
+- Use `st.scatter_chart()` for scatter plots
+- Use `st.map()` for geographic data
+- Use `st.altair_chart()` for pie charts
+- Use `st.plotly_chart()` for complex visualizations
 
 **Constraints:**
 - Output only valid Python code
