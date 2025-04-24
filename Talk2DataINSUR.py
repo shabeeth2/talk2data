@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import os
 import time
 import pandas as pd
+import re
 import matplotlib.pyplot as plt
 import google.generativeai as genai
 from agents.coder import get_code_response
@@ -33,7 +34,7 @@ client = genai.Client(api_key=google_api_key)
 
 def initialize_db_connection():
     # Connect to the SQL database
-    db = SQLDatabase.from_uri("sqlite:///.\data\insurance_company.db")
+    db = SQLDatabase.from_uri("sqlite:///.\data\\newSynthetic70k.db")
     
     return db
 
@@ -65,8 +66,30 @@ def build_few_shots_prompt(db,chat_history=None):
         {
            "input": "which customer has made claims",
            "query": "SELECT c.first_name, c.last_name FROM customer c JOIN policy p ON c.customer_id = p.customer_id JOIN claim cl ON p.policy_id = cl.policy_id;",
-        }
+        },
+        {
+           "input": "Show total premium collected by policy type",
+           "query": "SELECT policy_type, SUM(premium_amount) as total_premium FROM policies GROUP BY policy_type;",
+        },
+        {
+           "input": "Visualize claims trend over time",
+           "query": "SELECT claim_date, SUM(claim_amount) as total_claims FROM claims GROUP BY claim_date ORDER BY claim_date;",
+        },
+        {
+           "input": "Top 5 customers based on highest premium paid",
+           "query": "SELECT c.name, SUM(p.premium_amount) as total_premium FROM customers c JOIN policies p ON c.cust_id = p.customer_id GROUP BY c.name ORDER BY total_premium DESC LIMIT 5;",
+        },
+        {
+           "input": "Monthly count of policies sold",
+           "query": "SELECT claim_status, SUM(claim_amount) as total_claim_amount FROM claims GROUP BY claim_status;",
+        },
+        {
+           "input": "Compare approved vs rejected claim amounts",
+           "query": "SELECT claim_status, SUM(claim_amount) as total_claim_amount FROM claims GROUP BY claim_status;",
+        },
+
     ]
+
     chat_history_section = ""
     if chat_history:
         chat_history_section = f"""
@@ -233,6 +256,8 @@ def main():
 
             with st.status("Querying database", expanded=True) as status:
                 sql_query = sql_query.strip()
+                sql_query = re.search(r"```sql\n(.*?)```", sql_query, re.DOTALL).group(1).strip() if re.search(r"```sql\n(.*?)```", sql_query, re.DOTALL) else sql_query.strip()
+
 
                 if sql_query != "I don't know":
                     query_results = run_query(db = db, sql_query = sql_query)
@@ -290,6 +315,7 @@ def main():
                     except Exception as e:
                         st.error(f"Error generating visualization: {e}")
                         answer = "There was an error generating the visualization."
+                        st.code(visualization_code)
                 status.update(label="View Visualization!", state="complete", expanded=True)
                     
             else:
