@@ -3,3 +3,8 @@ google-genai
 pandas
 matplotlib
 streamlit
+crewai
+crewai-tools
+pydantic
+plotly
+langchain-google-genai
