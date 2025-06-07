@@ -67,8 +67,16 @@ class SimplePlatform:
         
         composer = Agent(
             role="Response Composer",
-            goal="Aggregate raw tool outputs into a single concise response matching the query intent. No hedging, disclaimers, or verbosity.",
-            backstory="Create direct, actionable responses from data results. No 'appears to be', 'seems like', or disclaimers.",
+            goal="Create direct answers using actual database query results. Always use the specific numbers and data provided to answer the user's question exactly.",
+            backstory="""Expert at converting database query results into clear, direct answers. 
+            
+            Rules:
+            1. ALWAYS use the actual data values provided in the query results
+            2. If given "Query result: 15247", answer "There are 15,247 claims"
+            3. If given multiple records, summarize the key findings
+            4. Be specific with numbers - no vague responses
+            5. Answer the exact question asked using the real data
+            6. No hedging, disclaimers, or suggestions to run queries""",
             llm=llm,
             verbose=False
         )
@@ -447,101 +455,53 @@ class SimplePlatform:
             pass  # Silently fail for chart generation
 
     def process_query(self, user_input: str) -> str:
-        """Process query using strict Planner→Executor→Composer flow"""
-        
-        # Step 1: Planning - determine exact tools needed
+        """Process query using strict Planner→Executor→SQL Execution→Final Response flow (robust, no JSON parsing)"""
+        # Step 1: Run planner and executor agents
         plan_task = Task(
-            description=f"""
-            Analyze query: "{user_input}"
-            
-            Determine EXACTLY what tools are needed:
-            - If needs data from database: include "sql" 
-            - If needs visualization: include "chart" and specify type (bar/pie/line/scatter)
-            - If simple response: include "text"
-            
-            Available tables: customers, policies, claims, agents
-            
-            Return JSON: {{"tools": ["sql", "chart"], "chart_type": "bar", "tables": ["customers", "policies"]}}
-            OR {{"tools": ["text"], "response": "direct answer"}}
-            """,
+            description=f"Analyze query: '{user_input}' and determine tools needed.",
             agent=self.agents["planner"],
             expected_output="JSON with exact tools needed"
         )
-        
-        # Step 2: Execute using single crew for efficiency
         exec_task = Task(
-            description=f"""
-            Based on planner output, execute query: "{user_input}"
-            
-            Database Schema:
-            - customers (cust_id, name, email, phone, address_id, agent_id, joined_date, status)
-            - policies (policy_id, customer_id, policy_type, start_date, end_date, premium_amount, status)
-            - claims (claim_id, policy_id, claim_date, claim_amount, claim_status, approved_amount)
-            - agents (agent_id, agent_name, email, phone, hire_date, commission_rate)
-            
-            Key joins: customers.cust_id = policies.customer_id
-            
-            Return ONLY the SQL query with exact column names.
-            """,
+            description=f"Generate SQL query for: '{user_input}' using the insurance schema.",
             agent=self.agents["executor"],
             expected_output="Clean SQL query"
         )
-        
-        # Step 3: Compose final response
-        compose_task = Task(
-            description=f"""
-            Create direct response for: "{user_input}"
-            
-            Use executor output to provide clear, concise answer.
-            Include key numbers and insights.
-            No hedging or disclaimers.
-            """,
-            agent=self.agents["composer"],
-            expected_output="Direct answer"
-        )
-        
-        # Execute all tasks in single crew (no parallel calls)
-        crew = Crew(
-            agents=[self.agents["planner"], self.agents["executor"], self.agents["composer"]], 
-            tasks=[plan_task, exec_task, compose_task], 
-            verbose=False
-        )
-        
-        result = crew.kickoff()
-        
-        # Parse planner output for visualization
+        Crew(agents=[self.agents["planner"], self.agents["executor"]], tasks=[plan_task, exec_task], verbose=False).kickoff()
+        # Step 2: Extract SQL from executor output robustly
+        sql_query = str(exec_task.output).strip()
+        import re
+        sql_match = re.search(r'(SELECT[\s\S]+?;)', sql_query, re.IGNORECASE)
+        if sql_match:
+            sql_query = sql_match.group(1)
+        else:
+            for line in sql_query.splitlines():
+                if line.strip().upper().startswith('SELECT'):
+                    sql_query = line.strip()
+                    if not sql_query.endswith(';'):
+                        sql_query += ';'
+                    break
+        # Step 3: Execute SQL and return result
+        df = pd.DataFrame()
         try:
-            plan_output = str(plan_task.output)
-            if "{" in plan_output:
-                plan = json.loads(plan_output.split("{")[1].split("}")[0].replace("'", '"'))
-                
-                # Execute SQL if planned
-                if "sql" in plan.get("tools", []):
-                    sql_query = str(exec_task.output).strip()
-                    if "```sql" in sql_query:
-                        sql_query = sql_query.split("```sql")[1].split("```")[0].strip()
-                    
-                    # Show SQL query in expander
-                    with st.expander("🔍 **SQL Query Used**", expanded=False):
-                        st.code(sql_query, language="sql")
-                    
-                    df = self._execute_sql(sql_query)
-                    
-                    # Generate chart if planned
-                    if "chart" in plan.get("tools", []) and not df.empty:
-                        chart_type = plan.get("chart_type", "bar")
-                        chart_config = {"type": chart_type, "title": "Data Analysis"}
-                        self._create_chart(df, chart_config, user_input)
-                    
-                    # Generate insights from actual data
-                    if not df.empty:
-                        self._display_data_insights(df, user_input)
-                        
-        except:
-            pass  # Continue with text response only
-        
-        return str(result)
-        
+            if sql_query and sql_query.upper().startswith('SELECT'):
+                df = self._execute_sql(sql_query)
+        except Exception as e:
+            return f"SQL execution error: {e}"
+        if not df.empty and len(df) == 1 and len(df.columns) == 1:
+            value = df.iloc[0, 0]
+            if "policy" in user_input.lower() and "type" in user_input.lower():
+                return f"There are {value} different types of policies in the database."
+            elif "customer" in user_input.lower():
+                return f"There are {value} customers in the database."
+            elif "claim" in user_input.lower():
+                return f"There are {value} claims in the database."
+            else:
+                return f"The answer is {value}."
+        elif not df.empty:
+            return f"Query returned {len(df)} records."
+        else:
+            return "No data found or unable to answer the question."
 def main():
     """Enhanced chat interface with chart capabilities"""
     st.set_page_config(
