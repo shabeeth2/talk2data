@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Enhanced Talk2DataINSUR.py - Optimized for Performance and User Experience
+
 Created on Sat Nov 16 20:08:52 2024
 @author: ravivarman.balaiyan
 """
@@ -24,7 +24,7 @@ load_dotenv()
 
 # Configure page settings (must be first Streamlit command)
 st.set_page_config(
-    page_title="AIWA - Talk to Insurance Data",
+    page_title="AIWA Chat with SQL Databases",
     page_icon="🏢",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -259,7 +259,7 @@ Guidelines:
 def render_sidebar():
     """Render sidebar with controls and information"""
     with st.sidebar:
-        st.title("🏢 Insurance Data Analytics")
+        st.title("AIWA - Conversational Insights - Talk 2 data")
         
         # Visualization toggle
         viz_enabled = st.toggle(
@@ -270,7 +270,7 @@ def render_sidebar():
         st.session_state.visualization_enabled = viz_enabled
         
         # Database info
-        st.subheader("📋 Database Information")
+        st.subheader("Database Information")
         st.info("""
         **Tables Available:**
         - Customer, Agent, Policy
