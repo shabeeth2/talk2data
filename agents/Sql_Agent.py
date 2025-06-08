@@ -4,12 +4,9 @@ import os
 import time
 import pandas as pd
 import matplotlib.pyplot as plt
-import google.generativeai as genai
 from coder import get_code_response
 #from langchain_core.prompts import PromptTemplate
 #from langchain_core.output_parsers import StrOutputParser
-
-import google.generativeai as genai
 #from langchain_core.prompts import PromptTemplate
 #from langchain_core.output_parsers import StrOutputParser
 
@@ -137,7 +134,7 @@ def run_query(db, sql_query):
 def validate_and_fix_sql(sql_query,user_question,schema):
     # Validate and fix SQL query
     # Remove the word 'sql' at the beginning of the SQL query
-    prompt_for_fixxing = f"""You are an AI assistant that validates and fixes SQL queries. Your task is to:
+    prompt_for_fixing = f"""You are an AI assistant that validates and fixes SQL queries. Your task is to:
 1. Check if the SQL query is valid.
 2. Ensure all table and column names are correctly spelled and exist in the schema. All the table and column names should be enclosed in backticks.
 3. If there are any issues, fix them and provide the corrected SQL query.

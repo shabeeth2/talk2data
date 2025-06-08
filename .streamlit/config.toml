@@ -1,0 +1,5 @@
+[server]
+headless = true
+# use a real integer port instead of $PORT
+port = 8501
+enableCORS = false
