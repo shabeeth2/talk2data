@@ -476,7 +476,7 @@ def main():
                     st.error("Planner output was not valid JSON. Using default plan.")
                     plan = {"sql_needed": True, "sql_queries_count": 1, "chart_needed": False}
                 
-                with st.status("Thinking.", expanded=True):
+                with st.status("Thinking.", expanded=True) as status_sql:
                     st.write("📋 **Execution Plan:**")
                     st.json(plan)
                     status_sql.update(label="✅ Plan", state="complete", expanded=False)
