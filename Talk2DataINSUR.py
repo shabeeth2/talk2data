@@ -1,533 +1,384 @@
 # -*- coding: utf-8 -*-
 """
-
-Created on Sat Nov 16 20:08:52 2024
-@author: ravivarman.balaiyan
+AIWA - Talk 2 Data
+Author: ravivarman.balaiyan
 """
 
 import streamlit as st
 import pandas as pd
 import re
-import time
 import os
-import json # Added import
+import json 
 from dotenv import load_dotenv
 from langchain_community.utilities.sql_database import SQLDatabase
 import matplotlib.pyplot as plt
 import plotly.express as px
-import plotly.graph_objects as go
 from google import genai
 from agents.coderAgent import get_code_response
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import plotly.figure_factory as ff
+import numpy as np
+import re
+from datetime import datetime, timedelta
+import networkx as nx
+from wordcloud import WordCloud
 
-# Load environment variables
 load_dotenv()
 
-# Configure page settings (must be first Streamlit command)
 st.set_page_config(
-    page_title="AIWA Chat with SQL Databases",
+    page_title="AIWA - Talk 2 Data",
     page_icon="🏢",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# Initialize Google AI client
+# Initialize services
 @st.cache_resource
-def initialize_genai_client():
-    """Initialize and cache the Google AI client"""
-    google_api_key = os.getenv("GOOGLE_API_KEY")
-    if not google_api_key:
-        st.error("Google API Key not found. Please check your .env file.")
-        st.stop()
-    return genai.Client(api_key=google_api_key)
-
-# Initialize database connection with caching
-@st.cache_resource
-def initialize_db_connection():
-    """Initialize and cache database connection"""
+def initialize_services():
     try:
-        # Use DATABASE_URI env var to avoid conflicts among multiple SQLite files
-        db_uri = os.getenv("DATABASE_URI", "sqlite:///./data/newSynthetic70k.db")
-        db = SQLDatabase.from_uri(db_uri)
-        return db
+        google_api_key = os.getenv("GOOGLE_API_KEY")
+        if not google_api_key:
+            st.error("Google API Key not found. Please check your .env file.")
+            st.stop()
+        
+        try:
+            client = genai.Client(api_key=google_api_key)
+        except Exception as e:
+            st.error(f"Failed to initialize Google AI client: {str(e)}")
+            st.stop()
+        try:
+            db_path = os.path.abspath("./data/newSynthetic70k.db")
+            if not os.path.exists(db_path):
+                st.error(f"Database file not found at: {db_path}")
+                st.stop()
+            
+            db = CustomDatabase(db_path)
+            db_schema = db.get_schema_info()
+            
+            # Test the con
+            test_result = db.run_query("SELECT name FROM sqlite_master WHERE type='table' LIMIT 1")
+            if not test_result:
+                raise Exception("Database appears empty or inaccessible")
+                
+        except Exception as e:
+            st.error(f"Database connection failed: {str(e)}")
+            st.stop()
+        
+        return client, db, db_schema
+        
     except Exception as e:
-        st.error(f"Database connection failed: {str(e)}")
-        st.stop()
+        st.error(f"Service initialization failed: {str(e)}")
+        return None, None, None
 
-@st.cache_data
-def get_schema_db(_db):
-    """Get and cache database schema"""
-    return _db.get_table_info()
-
-@st.cache_data
-def build_few_shots_prompt(_db, chat_history=None):
-    """Build and cache the few-shot prompt for SQL generation"""
-    db_schema = get_schema_db(_db)
+class CustomDatabase:
     
-    few_shots = [
-        {
-            "input": "How many Customers are present?",
-            "query": "SELECT COUNT(*) FROM customer;"
-        },
-        {
-            "input": "List 10 claims with the highest claim amount",
-            "query": "SELECT claim_id, claim_amount FROM claim ORDER BY claim_amount DESC LIMIT 10;"
-        },
-        {
-            "input": "List the top 3 agents with highest commission",
-            "query": "SELECT a.first_name, a.last_name, b.commission_amount FROM commission b LEFT JOIN agent a ON a.agent_id = b.agent_id ORDER BY b.commission_amount DESC LIMIT 3;"
-        },
-        {
-            "input": "which agent sold highest number of policies yesterday",
-            "query": "SELECT a.agent_id, a.first_name || ' ' || a.last_name AS agent_name, COUNT(s.sale_id) AS policies_sold FROM sales s JOIN agent a ON s.agent_id = a.agent_id WHERE DATE(s.sale_date) = DATE('now', '-1 day') GROUP BY a.agent_id, a.first_name, a.last_name ORDER BY policies_sold DESC LIMIT 1;"
-        },
-        {
-            "input": "Show total premium collected by policy type",
-            "query": "SELECT policy_type, SUM(premium_amount) as total_premium FROM policy GROUP BY policy_type;"
-        },
-        {
-            "input": "Monthly premium revenue trends",
-            "query": "SELECT strftime('%Y-%m', sale_date) as month, SUM(premium_amount) as monthly_revenue FROM sales s JOIN policy p ON s.policy_id = p.policy_id GROUP BY month ORDER BY month;"
-        },
-        {
-            "input": "Top 5 customers by total premium paid",
-            "query": "SELECT c.first_name || ' ' || c.last_name as customer_name, SUM(p.premium_amount) as total_premium FROM customer c JOIN policy p ON c.customer_id = p.customer_id GROUP BY c.customer_id ORDER BY total_premium DESC LIMIT 5;"
-        },
-        {
-            "input": "Compare approved vs rejected claim amounts",
-            "query": "SELECT claim_status, COUNT(*) as claim_count, SUM(claim_amount) as total_amount FROM claim GROUP BY claim_status;"
-        }
-    ]
-
-    chat_context = f"\\nPrevious conversation:\\n{chat_history}" if chat_history else ""
+    def __init__(self, db_path):
+        self.db_path = db_path
+        
+    def run_query(self, query):
+        import sqlite3
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(query)
+            
+            if query.strip().upper().startswith('SELECT'):
+                results = cursor.fetchall()
+                conn.close()
+                return str(results) if results else "No results found"
+            else:
+                conn.commit()
+                conn.close()
+                return "Query executed "
+                
+        except Exception as e:
+            return f"Query error: {str(e)}"
     
-    prompt_base = f"""
-You are a SQL expert and intelligent assistant. Generate accurate, efficient SQL queries based on the database schema.
+    def run(self, query):
+        return self.run_query(query)
+        
+    def get_schema_info(self):
+        return """
+Table 'addresses' has columns: address_id (TEXT), street (TEXT), city (TEXT), county (TEXT), postcode (TEXT), country (TEXT)
+Table 'agents' has columns: agent_id (TEXT), agent_name (TEXT), email (TEXT), phone (TEXT), hire_date (TEXT), commission_rate (REAL)
+Table 'claims' has columns: claim_id (TEXT), policy_id (TEXT), claim_date (TEXT), claim_amount (REAL), claim_status (TEXT), approved_amount (REAL)
+Table 'commissions' has columns: commission_id (TEXT), agent_id (TEXT), policy_id (TEXT), commission_amount (REAL), paid_date (TEXT)
+Table 'customers' has columns: cust_id (TEXT), name (TEXT), email (TEXT), phone (TEXT), address_id (TEXT), agent_id (TEXT), joined_date (TEXT), status (TEXT)
+Table 'policies' has columns: policy_id (TEXT), customer_id (TEXT), policy_type (TEXT), start_date (TEXT), end_date (TEXT), premium_amount (REAL), status (TEXT)
+Table 'prospects' has columns: prospect_id (TEXT), name (TEXT), email (TEXT), phone (TEXT), created_at (TEXT), status (TEXT)
+Table 'quotes' has columns: quote_id (TEXT), prospect_id (TEXT), quote_date (TEXT), premium_amount (REAL), valid_till (TEXT), status (TEXT)
+Table 'sales' has columns: sale_id (TEXT), policy_id (TEXT), agent_id (TEXT), customer_id (TEXT), sale_date (TEXT), premium_amount (REAL), commission_amount (REAL), region (TEXT)
+Table 'customer_demographics' has columns: demo_id (TEXT), customer_id (TEXT), age (INTEGER), gender (TEXT), income_bracket (TEXT), occupation_category (TEXT), family_size (INTEGER), health_score (INTEGER)
 
-Database Schema: {db_schema}{chat_context}
-
-Guidelines:
-1. Analyze the request to determine exact data requirements
-2. Use only provided schema (tables, columns, relationships)
-3. Generate efficient queries with proper JOINs and indexing
-4. Handle edge cases (null values, empty results)
-5. Return ONLY executable SQL - no formatting, no explanations
-6. Remove ``` and 'sql' keywords from output
-7. ONE query only, no multiple queries
-8. No DML statements (INSERT, UPDATE, DELETE, DROP)
-
-Examples:
+Available views:
+- monthly_sales_summary: Time series data for sales trends
+- policy_type_performance: Life vs Health insurance comparison
+- agent_performance_by_type: Agent performance metrics
+- regional_performance: Geographic sales analysis
 """
-    
-    for example in few_shots:
-        prompt_base += f"\\nInput: {example['input']}\\nSQL: {example['query']}\\n"
-    
-    return prompt_base
 
-# Agent Definitions
-def planner_agent(client, user_question, chat_history, db_schema):
-    """
-    Analyzes the user query, infers the analytical goal, and decides the steps.
-    Returns a JSON string outlining the plan.
-    """
+FEW_SHOT_EXAMPLES = [
+    {
+        "input": "How many Customers are present?",
+        "query": "SELECT COUNT(*) FROM customers;"
+    },
+    {
+        "input": "List 10 claims with the highest claim amount",
+        "query": "SELECT claim_id, claim_amount FROM claims ORDER BY claim_amount DESC LIMIT 10;"
+    },
+    {
+        "input": "List the top 3 agents with highest commission",
+        "query": "SELECT a.agent_name, c.commission_amount FROM commissions c LEFT JOIN agents a ON a.agent_id = c.agent_id ORDER BY c.commission_amount DESC LIMIT 3;"
+    },
+    {
+        "input": "Monthly premium revenue trends",
+        "query": "SELECT strftime('%Y-%m', sale_date) as month, SUM(premium_amount) as monthly_revenue FROM sales GROUP BY month ORDER BY month;"
+    }
+]
+
+def make_plan(client, user_question, db_schema):
+    """Simple planner: decides if SQL and chart are needed"""
     prompt = f"""
-You are a planner agent for a multi-agent system that answers questions based on a SQL database.
-Your goal is to analyze the user's query and the conversation history to determine the necessary steps.
+Analyze this user question about insurance data: "{user_question}"
 
-Database Schema:
-{db_schema}
+Database has tables: customers, agents, policies, sales, claims, commissions, addresses, quotes
 
-User Question: "{user_question}"
+Decide:
+1. sql_needed: true/false - Does this need database query?
+2. chart_needed: true/false - Would a chart help visualize the answer?
 
-Conversation History:
-{chat_history}
-
-Based on the user question, conversation history, and schema, decide:
-1.  `sql_needed`: boolean - Is a SQL query required to answer this question?
-2.  `sql_queries_count`: integer - How many SQL queries are likely needed? (e.g., 1 for a direct question, 2 or more for comparisons). If sql_needed is false, this should be 0.
-3.  `chart_needed`: boolean - Is a chart likely to be helpful to visualize the answer? This should be true if the user asks for a chart, or if the data is suitable for visualization (e.g., trends, comparisons, distributions).
-
-Output your decision as a JSON object with the keys "sql_needed", "sql_queries_count", and "chart_needed".
-Example:
-{{"sql_needed": true, "sql_queries_count": 1, "chart_needed": true}}
+Return only JSON: {{"sql_needed": boolean, "chart_needed": boolean}}
 """
+    
     try:
         response = client.models.generate_content(
             model="gemini-1.5-flash",
             contents=prompt
         )
-        # Ensure the response is a valid JSON string
-        plan_str = response.text.strip()
-        # Basic cleaning if the model wraps with markdown
-        if plan_str.startswith("```json"):
-            plan_str = plan_str[7:]
-        if plan_str.endswith("```"):
-            plan_str = plan_str[:-3]
-        
-        # Validate and parse JSON
-        json.loads(plan_str) # Will raise error if not valid JSON
-        return plan_str
-    except Exception as e:
-        st.error(f"Planner Agent Error: {str(e)}")
-        # Fallback plan
-        return json.dumps({"sql_needed": True, "sql_queries_count": 1, "chart_needed": False})
+        plan_text = response.text.strip() 
+        if plan_text.startswith("```json"):
+            plan_text = plan_text[7:-3]
+        return json.loads(plan_text)
+    except:
+        return {"sql_needed": True, "chart_needed": False}
 
-
-def sql_generator_agent(client, db, user_question, chat_history):
-    """Generates and executes SQL query."""
-    few_shots_prompt = build_few_shots_prompt(db, chat_history)
-    sql_query = generate_sql_query(client, few_shots_prompt, user_question)
+def generate_sql(client, user_question, db_schema):
+    """Generate SQL query from user question"""
+    examples_text = "\n".join([
+        f"Question: {ex['input']}\nSQL: {ex['query']}\n"
+        for ex in FEW_SHOT_EXAMPLES
+    ])
     
-    if sql_query.strip().upper() == "I DON'T KNOW":
-        return "I don't know", "No result found in database"
+    prompt = f"""
+Database Schema: {db_schema}
 
-    st.code(sql_query, language="sql")
-    query_results = run_query(db, sql_query)
-    return sql_query, query_results
+Examples:
+{examples_text}
 
-# visualization_generator_agent is the existing process_visualization function
-
-def response_composer_agent(client, sql_query_results, user_question, plan):
-    """Composes the final textual response."""
-    # If SQL was not needed, the query_results might be a placeholder or direct answer
-    if not plan.get("sql_needed") and isinstance(sql_query_results, str):
-         # If no SQL was run, and we have a string, it might be a direct answer or an error.
-         # For now, let's assume it's a message to be displayed.
-         # A more sophisticated approach would be needed if the planner could decide to skip SQL
-         # and directly compose an answer based on the query alone.
-        if sql_query_results == "No result found in database" or sql_query_results == "I don't know": # Default from sql_generator_agent
-            return "I couldn't find an answer to your question based on the available data."
-        return sql_query_results
-
-
-    return generate_final_answer(client, str(sql_query_results), user_question)
-
-
-def generate_sql_query(client, prompt, user_question):
-    """Generate SQL query using Gemini AI"""
+Generate SQL for: "{user_question}"
+IMPORTANT: Only use tables listed in the schema.
+Return only the SQL query, no formatting.
+"""
+    
     try:
         response = client.models.generate_content(
             model="gemini-1.5-flash",
-            contents=f"{prompt}\n\nUser Question: {user_question}"
+            contents=prompt
         )
-        
         sql_query = response.text.strip()
-        # Clean the SQL query
         sql_query = re.sub(r'```sql\n|```\n|```', '', sql_query)
-        sql_query = re.sub(r'^sql\s*', '', sql_query, flags=re.IGNORECASE)
-        
         return sql_query.strip()
     except Exception as e:
-        st.error(f"Error generating SQL query: {str(e)}")
-        return "I don't know"
-
-def run_query(db, sql_query):
-    """Execute SQL query with error handling"""
-    try:
-        if sql_query == "I don't know":
-            return "No result found in database"
+        st.error(f"SQL generation error: {str(e)}")
+        return None
+# def generate_sql_query(client, prompt, user_question):
+#     """Generate SQL query using Gemini AI"""
+#     try:
+#         response = client.models.generate_content(
+#             model="gemini-2.5-flash-lite-preview-06-17",
+#             contents=f"{prompt}\n\nUser Question: {user_question}"
+#         )
         
+#         sql_query = response.text.strip()
+#         # Clean the SQL query
+#         sql_query = re.sub(r'```sql\n|```\n|```', '', sql_query)
+#         sql_query = re.sub(r'^sql\s*', '', sql_query, flags=re.IGNORECASE)
+        
+#         return sql_query.strip()
+#     except Exception as e:
+#         st.error(f"Error generating SQL query: {str(e)}")
+#         return "I don't know"
+
+# def run_query(db, sql_query):
+#     """Execute SQL query with error handling"""
+#     try:
+#         if sql_query == "I don't know":
+#             return "No result found in database"
+        
+#         result = db.run(sql_query)
+#         return result if result else "No result found in database"
+#     except Exception as e:
+#         st.error(f"Query execution error: {str(e)}")
+#         return "No result found in database"
+@st.cache_data
+def execute_sql(sql_query):
+    """Execute SQL query with caching using custom database handler"""
+    if not sql_query:
+        return "No query to execute"
+    
+    try:
+        db_path = os.path.abspath("./data/newSynthetic70k.db")
+        db = CustomDatabase(db_path)
         result = db.run(sql_query)
-        return result if result else "No result found in database"
+        return result if result else "No results found"
     except Exception as e:
         st.error(f"Query execution error: {str(e)}")
-        return "No result found in database"
+        return "Query failed"
 
-def generate_final_answer(client, sql_response, user_question):
-    """Generate final answer based on SQL results"""
+def parse_results_to_df(results_str):   
     try:
-        prompt = f"""
-Based on the SQL response, provide a clear, user-friendly answer to: "{user_question}"
+        import ast
+        data = ast.literal_eval(results_str)
+        df = pd.DataFrame(data)
+        return df
+    except (ValueError, SyntaxError, TypeError) as e:
+        st.warning(f"Could not parse SQL results into a DataFrame: {e}")
+        return pd.DataFrame() # Return empty DataFrame on failure
 
-SQL Response: {sql_response}
+def create_chart(query_results, user_question):
+    try:
+        if isinstance(query_results, str):
+            df = parse_results_to_df(query_results)
+        else:
+            df = pd.DataFrame(query_results)
 
-Guidelines:
-- Be conversational and informative
-- Don't show error messages to user
-- If empty results, provide polite message
-- Highlight key insights from the data
-- Be concise but comprehensive
-"""
+        if df.empty:
+            st.warning("The query returned no data to visualize.")
+            return
+        viz_code = get_code_response(df, user_question)
         
+        # Import create_network_traces function from coderAgent
+        from agents.coderAgent import create_network_traces
+        
+        local_vars = {
+            'df': df, 'st': st, 'px': px, 'plt': plt, 'pd': pd, 'go': go,
+            'ff': ff, 'np': np, 'nx': nx, 'WordCloud': WordCloud,
+            'make_subplots': make_subplots, 'create_network_traces': create_network_traces
+        }
+        
+        exec(viz_code, globals(), local_vars)
+        
+    except Exception as e:
+        st.error(f"Enhanced visualization error: {str(e)}")
+        st.code(viz_code, language='python')    
+        # Smart fallback based on data characteristics
+        # create_intelligent_fallback(df if 'df' in locals() else None, user_question)
+
+def generate_response(client, query_results, user_question):
+    """Generate final natural language response"""
+    prompt = f"""
+User asked: "{user_question}"
+Database returned: {query_results}
+
+Provide a clear, helpful answer. If no data, explain politely.
+Be conversational and highlight key insights.
+"""
+    
+    try:
         response = client.models.generate_content(
             model="gemini-1.5-flash",
             contents=prompt
         )
         return response.text.strip()
-    except Exception as e:
-        return "I apologize, but I encountered an issue processing your request. Please try again."
+    except:
+        return "I apologize, but I encountered an issue processing your request."
 
-def render_sidebar():
-    """Render sidebar with controls and information"""
+def main():
+    """Main application"""
+    # Init session state
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+    
+    client, db, db_schema = initialize_services()
+    
+    st.title("🤖 AIWA - Insurance Data Assistant")
+    st.markdown("Ask questions about your insurance database in natural language!")
+    
     with st.sidebar:
-        st.title("AIWA - Conversational Insights - Talk 2 data")
-        
-        # Visualization toggle
-        viz_enabled = st.toggle(
-            "📊 Enable Visualizations",
-            value=st.session_state.get('visualization_enabled', True),
-            help="Toggle to enable/disable automatic chart generation"
-        )
-        st.session_state.visualization_enabled = viz_enabled
-        
-        # Database info
-        st.subheader("Database Information")
+        st.title("🏢 Database Info")
         st.info("""
-        **Tables Available:**
+        **Available Tables:**
         - Customer, Agent, Policy
         - Sales, Claims, Commission
         - Address, Quote
-        
-        **Sample Questions:**
-        - "Show monthly premium trends"
-        - "Top performing agents"
-        - "Claims analysis by status"
         """)
         
-        # Clear chat history
-        if st.button("🗑️ Clear Chat History"):
+        if st.button("Clear Chat"):
             st.session_state.chat_history = []
             st.rerun()
-
-def process_visualization(query_results, user_question):
-    """Process and display visualization with improved data handling"""
-    if not st.session_state.get('visualization_enabled', True):
-        return "Visualization disabled."
     
-    try:
-        with st.spinner("🎨 Creating visualization..."):
-            # Debug: Show what we received
-            with st.expander("🔍 Debug: Query Results", expanded=False):
-                st.write(f"Type: {type(query_results)}")
-                st.write(f"Content: {query_results}")
-            
-            # Enhanced data conversion logic
-            df = None
-            
-            # Handle different query result formats
-            if query_results == "No result found in database" or not query_results:
-                st.warning("⚠️ No data available for visualization")
-                return
-            
-            # Try to convert to DataFrame based on data type
-            if isinstance(query_results, str):
-                # If it's a string that looks like data, try to parse it
-                if query_results.startswith('[') or query_results.startswith('('):
-                    try:
-                        # Try to evaluate as Python literal
-                        import ast
-                        parsed_data = ast.literal_eval(query_results)
-                        df = pd.DataFrame(parsed_data)
-                    except:
-                        st.warning("⚠️ Cannot parse string data for visualization")
-                        return
-                else:
-                    st.warning("⚠️ Query result is text, not tabular data")
-                    return
-                    
-            elif isinstance(query_results, (list, tuple)):
-                # Handle list of tuples/lists (common SQL result format)
-                if len(query_results) > 0:
-                    if isinstance(query_results[0], (list, tuple)):
-                        # List of rows - need to infer column names
-                        df = pd.DataFrame(query_results)
-                    else:
-                        # List of values - single column
-                        df = pd.DataFrame({'value': query_results})
-                else:
-                    st.warning("⚠️ Empty result set")
-                    return
-                    
-            elif isinstance(query_results, dict):
-                # Dictionary format
-                df = pd.DataFrame(query_results)
-                
-            elif isinstance(query_results, pd.DataFrame):
-                # Already a DataFrame
-                df = query_results
-                
-            else:
-                # Try generic conversion
-                try:
-                    df = pd.DataFrame(query_results)
-                except Exception as e:
-                    st.warning(f"⚠️ Cannot convert data to DataFrame: {str(e)}")
-                    return
-            
-            # Validate DataFrame
-            if df is None or df.empty:
-                st.warning("⚠️ No tabular data available for visualization")
-                return
-            
-            # Show DataFrame info for debugging
-            with st.expander("📊 Data Preview", expanded=False):
-                st.write(f"Shape: {df.shape}")
-                st.write("Columns:", df.columns.tolist())
-                st.dataframe(df.head())
-            # Direct bar chart fallback for simple two-column data
-            if df.shape[1] == 2:
-                fig = px.bar(df, x=df.columns[0], y=df.columns[1], labels={df.columns[0]: df.columns[0], df.columns[1]: df.columns[1]})
-                st.plotly_chart(fig, use_container_width=True)
-                return  # Skip AI-generated code
-            
-            # Generate and execute visualization code
-            visualization_code = get_code_response(query_results, user_question)
-            
-            # Create visualization container
-            with st.container():
-                # Execute visualization code safely with fallback for missing column names
-                local_vars = {
-                    'df': df,
-                    'data_frame': df,  # Alias for visualization code expecting data_frame
-                    'query_results': query_results,
-                    'st': st,
-                    'px': px,
-                    'plt': plt,
-                    'pd': pd,
-                    'go': go if 'go' in globals() else None
-                }
-                try:
-                    exec(visualization_code, globals(), local_vars)
-                except Exception as e:
-                    err = str(e).lower()
-                    # Fallback generic bar chart for column name mismatches
-                    if "not the name" in err or "keyerror" in err:
-                        fig = px.bar(df, x=df.columns[0], y=df.columns[1], labels={df.columns[0]: df.columns[0], df.columns[1]: df.columns[1]})
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        raise
-                # Adjust matplotlib figure size if used
-                try:
-                    fig = plt.gcf()
-                    if fig.get_axes():
-                        fig.set_size_inches(10, 6)
-                        plt.tight_layout()
-                except:
-                    pass
-                
-                return visualization_code
-                        
-    except Exception as e:
-        st.error(f"❌ Visualization error: {str(e)}")
-        with st.expander("🔍 Debug Information"):
-            st.code(visualization_code if 'visualization_code' in locals() else "No code generated")
-            st.write("Query Results Type:", type(query_results))
-            st.write("Query Results:", str(query_results)[:500] + "..." if len(str(query_results)) > 500 else str(query_results))
-
-    return None
-
-def main():
-    """Main application function"""
-    # Initialize session state
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
-    if "visualization_enabled" not in st.session_state:
-        st.session_state.visualization_enabled = True
-
-    # Initialize resources
-    client = initialize_genai_client()
-    db = initialize_db_connection()
-    db_schema = get_schema_db(db)
-    
-    # Render sidebar
-    render_sidebar()
-    
-    # Main header
-    st.title("🤖 AIWA - Conversational Insurance Data Insights")
-    st.markdown("Ask questions about your insurance database in natural language!")
-    
-    # Display chat history (only render chart for latest assistant message to improve performance)
-    history = st.session_state.chat_history
-    for idx, message in enumerate(history):
+    # Display chat history
+    for message in st.session_state.chat_history:
         with st.chat_message(message["role"]):
-            if message["role"] == "assistant":
-                st.markdown(message["content"])
-                # Only re-render chart for the most recent assistant message
-                if idx == len(history) - 1 and message.get("chart_data") and message.get("chart_question"):
-                    process_visualization(message["chart_data"], message["chart_question"])
-            else:
-                st.write(message["content"])
+            st.write(message["content"])
+            # Show chart if available
+            if message.get("chart_data") and message.get("show_chart"):
+                create_chart(message["chart_data"], message.get("question", ""))
     
     # Chat input
-    user_question = st.chat_input(
-        "💬 Ask about policies, customers, agents, claims, sales...",
-        key="user_input"
-    )
+    user_question = st.chat_input("Ask about policies, customers, agents, claims...")
     
     if user_question:
+
         st.session_state.chat_history.append({"role": "user", "content": user_question})
+        
         with st.chat_message("user"):
             st.write(user_question)
         
         with st.chat_message("assistant"):
-            assistant_response_content = ""
-            query_results_for_viz = None # Store results for visualization
-            viz_code = None # Store visualization code
-
-            with st.spinner("🤔 Thinking..."):
-                # 1. Planner Agent
-                chat_context_for_planner = "\\n".join([
-                    f"{msg['role']}: {msg['content']}" 
-                    for msg in st.session_state.chat_history[-5:]
-                ])
-                plan_str = planner_agent(client, user_question, chat_context_for_planner, db_schema)
-                try:
-                    plan = json.loads(plan_str)
-                except json.JSONDecodeError:
-                    st.error("Planner output was not valid JSON. Using default plan.")
-                    plan = {"sql_needed": True, "sql_queries_count": 1, "chart_needed": False}
-                
-                with st.status("Thinking.", expanded=True) as status_sql:
-                    st.write("📋 **Execution Plan:**")
-                    st.json(plan)
-                    status_sql.update(label="✅ Plan", state="complete", expanded=False)
-
-                sql_query = "No SQL query generated."
-                query_results = "No query run."
-
-                if plan.get("sql_needed", False):
-                    with st.status("⚙️ Processing SQL...", expanded=True) as status_sql:
-                        # For simplicity, handling one SQL query if multiple are planned.
-                        # A loop or more complex logic would be needed for `sql_queries_count > 1`.
-                        sql_query, query_results = sql_generator_agent(client, db, user_question, chat_context_for_planner)
-                        query_results_for_viz = query_results # Save for potential visualization
-                        status_sql.update(label="✅ SQL Processing Complete", state="complete", expanded=False)
-                else:
-                    query_results_for_viz = "No data from SQL for visualization as SQL was not needed."
-
-
-                # 3. Visualization Generator Agent (conditionally)
-                if plan.get("chart_needed", False) and st.session_state.visualization_enabled:
-                    if query_results_for_viz and query_results_for_viz not in ["No result found in database", "I don't know", "No data from SQL for visualization as SQL was not needed."]:
-                        viz_code = process_visualization(query_results_for_viz, user_question)
-                    elif query_results_for_viz == "No data from SQL for visualization as SQL was not needed.":
-                         st.info("Chart was planned, but no SQL was executed to fetch data for it.")
-                    else:
-                        st.info("Chart was planned, but no data was returned from the database to visualize.")
-                elif plan.get("chart_needed", False) and not st.session_state.visualization_enabled:
-                    st.info("Chart generation is disabled in the sidebar.")
-
-                # 4. Response Composer Agent
-                with st.spinner("✍️ Composing response..."):
-                    final_answer_text = response_composer_agent(client, query_results, user_question, plan)
-                
-                # Display final answer with typing effect
-                response_placeholder = st.empty()
-                full_response_text = ""
-                for chunk in final_answer_text.split():
-                    full_response_text += chunk + " "
-                    time.sleep(0.03)
-                    response_placeholder.markdown(full_response_text + "▌")
-                response_placeholder.markdown(full_response_text)
-                
-                assistant_response_content = full_response_text
+            # Step 1: Make plan
+            with st.spinner("Thinking..."):
+                plan = make_plan(client, user_question, db_schema)
+                #t.write(f"📋 Plan: SQL needed: {plan['sql_needed']}, Chart needed: {plan['chart_needed']}")
             
-            # Append assistant message and persist chart data for history
-            msg = {"role": "assistant", "content": assistant_response_content}
-            # store chart context if generated
-            if plan.get("chart_needed", False) and st.session_state.visualization_enabled and viz_code:
-                msg["chart_data"] = query_results_for_viz
-                msg["chart_question"] = user_question
-            st.session_state.chat_history.append(msg)
+            # Step 2: Execute SQL if needed
+            query_results = None
+            if plan["sql_needed"]:
+                with st.spinner("Generating and executing SQL..."):
+                    sql_query = generate_sql(client, user_question, db_schema)
+                    if sql_query:
+                        st.code(sql_query, language="sql")
+                        query_results = execute_sql(sql_query)
+            
+            # Step 3: Create chart if needed
+            if plan["chart_needed"] and query_results:
+                with st.spinner("Creating visualization..."):
+                    try:
+                        create_chart(query_results, user_question)
+                    except Exception as e:
+                        st.error(f"Chart creation error: {str(e)}")
+
+            
+            # Step 4: Generate response
+            with st.spinner("Generating response..."):
+                if query_results:
+                    response = generate_response(client, query_results, user_question)
+                else:
+                    response = "I can help you with questions about the insurance database. Please try asking about customers, policies, agents, or claims."
+                
+                st.write(response)
+        
+        # history
+        assistant_msg = {
+            "role": "assistant", 
+            "content": response,
+            "question": user_question
+        }
+        if query_results and plan["chart_needed"]:
+            assistant_msg["chart_data"] = query_results
+            assistant_msg["show_chart"] = True
+        
+        st.session_state.chat_history.append(assistant_msg)
 
 if __name__ == "__main__":
     main()
