@@ -4,5 +4,6 @@
 
 # Dependencies
 /venv
+misc/
 /__pycache__
 *.pyc
