@@ -9,7 +9,6 @@ import pandas as pd
 import re
 import os
 import json 
-from dotenv import load_dotenv
 from langchain_community.utilities.sql_database import SQLDatabase
 import matplotlib.pyplot as plt
 import plotly.express as px
@@ -24,7 +23,6 @@ from datetime import datetime, timedelta
 import networkx as nx
 from wordcloud import WordCloud
 
-load_dotenv()
 
 st.set_page_config(
     page_title="AIWA - Talk 2 Data",
