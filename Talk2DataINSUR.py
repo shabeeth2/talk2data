@@ -33,7 +33,7 @@ st.set_page_config(
 @st.cache_resource
 def initialize_services():
     try:
-        google_api_key = os.getenv(GOOGLE_API_KEY)
+        google_api_key = os.getenv("GOOGLE_API_KEY")
         if not google_api_key:
             st.error("Google API Key not found. Please check your .env file.")
             st.stop()
