@@ -9,7 +9,6 @@ import pandas as pd
 import re
 import os
 import json 
-from langchain_community.utilities.sql_database import SQLDatabase
 import matplotlib.pyplot as plt
 import plotly.express as px
 from google import genai
