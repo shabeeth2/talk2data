@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Config - use lazy initialization
-google_api_key = os.getenv("GOOGLE_API_KEY")
+google_api_key = os.getenv(GOOGLE_API_KEY)
 model_id = "gemini-1.5-flash"  
 
 # Initialize client lazily (only when needed)
